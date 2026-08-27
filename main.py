@@ -13,15 +13,11 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Role Catalog & Opening Questions
 ROLE_CATALOG = {
-    # Tech Roles
     "1": ("Linux & Cloud Engineer", "Can you explain how you would troubleshoot a server experiencing high load average while CPU utilization remains below 10%?"),
     "2": ("DevOps / SRE", "How do you design a zero-downtime CI/CD deployment pipeline for a high-traffic microservices architecture?"),
     "3": ("Python Backend Developer", "How do you handle database connection pooling and asynchronous task queues under heavy concurrency?"),
     "4": ("Data Analyst / SQL", "Walk me through how you would optimize a slow-running SQL query joining three multi-million row tables."),
-    
-    # Visa Interview Roles
     "5": ("US F-1 Student Visa", "Why did you choose this specific university and course instead of studying in your home country?"),
     "6": ("US B1/B2 Tourist/Business Visa", "What is the specific purpose of your visit to the United States, and how long do you plan to stay?"),
     "7": ("US H-1B Work Visa", "Can you explain your job title, day-to-day responsibilities, and how your degree directly aligns with this specialized role?"),
@@ -42,7 +38,7 @@ async def telegram_interview_handler(request: Request):
     chat_id = str(msg["chat"]["id"])
 
     try:
-        # 1. Start & Help Menu
+        # 1. Start & Roles Menu
         if "text" in msg and (msg["text"].startswith("/start") or msg["text"].startswith("/roles")):
             menu_text = (
                 "🎯 *Welcome to AI Mock Interviewer!*\n\n"
@@ -62,7 +58,7 @@ async def telegram_interview_handler(request: Request):
             await send_telegram_text(chat_id, menu_text)
             return {"status": "ok"}
 
-        # 2. Number Selection (1 to 8) or Custom /role Command
+        # 2. Track Selection
         if "text" in msg:
             user_input = msg["text"].strip()
             selected_role = None
@@ -72,10 +68,9 @@ async def telegram_interview_handler(request: Request):
                 selected_role, first_q = ROLE_CATALOG[user_input]
             elif user_input.startswith("/role"):
                 selected_role = user_input.replace("/role", "").strip() or "General Technical"
-                first_q = f"Tell me about your background and why you are applying for the {selected_role} position."
+                first_q = f"Tell me about your background and why you are applying for {selected_role}."
 
             if selected_role:
-                # Save session to Supabase
                 supabase.table("interview_sessions").insert({
                     "platform": "telegram",
                     "platform_user_id": chat_id,
@@ -90,14 +85,13 @@ async def telegram_interview_handler(request: Request):
                 prompt_msg = (
                     f"{icon} *Session Started: {selected_role}*\n\n"
                     f"*Question 1/5:*\n{first_q}\n\n"
-                    f"👉 *Hold the mic and send a 30-45s voice note answering this question.*"
+                    f"👉 *Hold the mic button and send your 30-45s voice answer.*"
                 )
                 await send_telegram_text(chat_id, prompt_msg)
 
-                # Send Question 1 Audio Voice Note
                 spoken_prefix = "Visa Officer speaking." if is_visa else "Interviewer speaking."
                 audio_file = await MockInterviewEngine.synthesize_voice(
-                    f"{spoken_prefix} Here is your first question: {first_q}", 
+                    f"{spoken_prefix} Welcome. Here is your first question: {first_q}", 
                     "q1_voice.mp3"
                 )
                 await send_telegram_voice(chat_id, audio_file)
@@ -105,8 +99,6 @@ async def telegram_interview_handler(request: Request):
 
         # 3. Handle Voice Answer
         if "voice" in msg:
-            print(f"[DEBUG] Received voice answer from {chat_id}")
-
             session_res = supabase.table("interview_sessions").select("*")\
                 .eq("platform_user_id", chat_id)\
                 .eq("is_completed", False)\
@@ -114,7 +106,7 @@ async def telegram_interview_handler(request: Request):
                 .limit(1).execute()
 
             if not session_res.data:
-                await send_telegram_text(chat_id, "No active session found. Please type /roles to pick an interview stream.")
+                await send_telegram_text(chat_id, "No active session found. Please type /roles to start a new mock round.")
                 return {"status": "no_session"}
 
             session = session_res.data[0]
@@ -124,7 +116,7 @@ async def telegram_interview_handler(request: Request):
             q_idx = session["current_question_index"]
             is_visa = "visa" in role.lower()
 
-            # Download audio
+            # Download candidate voice note
             file_id = msg["voice"]["file_id"]
             async with httpx.AsyncClient() as client:
                 file_info = (await client.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}")).json()
@@ -156,19 +148,21 @@ async def telegram_interview_handler(request: Request):
                     "current_question_text": next_q
                 }).eq("id", session_id).execute()
             else:
-                feedback_text += "🎉 Interview Completed! You have finished all 5 questions for this round."
+                feedback_text += "🎉 Interview Completed! Great job practicing today."
                 supabase.table("interview_sessions").update({"is_completed": True}).eq("id", session_id).execute()
 
-            # 1. Send Feedback Text
+            # 1. Send Text Feedback First
             await send_telegram_text(chat_id, feedback_text)
 
-            # 2. Send Voice Note (Feedback + Next Question)
+            # 2. Send Clean Spoken Feedback + Next Question Voice Note
             try:
-                spoken_text = eval_data.get("spoken_summary", "Good answer.")
+                spoken_feedback = eval_data.get("spoken_summary", "Thank you for that response.")
                 if not is_final:
-                    spoken_text += f" Next question: {eval_data['next_question']}"
+                    spoken_audio_script = f"{spoken_feedback} Now, for question {q_idx + 1}: {eval_data['next_question']}"
+                else:
+                    spoken_audio_script = f"{spoken_feedback} This concludes our interview session today. Well done."
 
-                audio_file = await MockInterviewEngine.synthesize_voice(spoken_text, f"turn_{q_idx}_voice.mp3")
+                audio_file = await MockInterviewEngine.synthesize_voice(spoken_audio_script, f"turn_{q_idx}_voice.mp3")
                 await send_telegram_voice(chat_id, audio_file)
             except Exception as voice_err:
                 print(f"[WARN] Voice synthesis error: {voice_err}")
