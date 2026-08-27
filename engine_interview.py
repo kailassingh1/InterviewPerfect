@@ -33,7 +33,7 @@ class MockInterviewEngine:
         6. "spoken_summary": A warm 2-sentence feedback summary for voice reply.
         """
         response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=prompt,
             config={"response_mime_type": "application/json"}
         )
