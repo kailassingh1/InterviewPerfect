@@ -3,6 +3,7 @@ import json
 from google import genai
 from groq import Groq
 import edge_tts
+from gtts import gTTS
 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -30,7 +31,7 @@ class MockInterviewEngine:
         3. "communication_feedback": Grammar corrections or filler words.
         4. "exemplary_response": A concise, high-impact STAR answer.
         5. "next_question": Next question for this role (or 'CONCLUDE' if turn_index == 5).
-        6. "spoken_summary": A warm 2-sentence feedback summary for voice reply.
+        6. "spoken_summary": 2-3 spoken sentences combining quick feedback and the next question.
         """
         response = gemini_client.models.generate_content(
             model="gemini-3.6-flash",
@@ -40,7 +41,14 @@ class MockInterviewEngine:
         return json.loads(response.text)
 
     @staticmethod
-    async def synthesize_voice(text: str, output_path: str = "interviewer_voice.ogg") -> str:
-        comm = edge_tts.Communicate(text=text, voice="en-US-GuyNeural")
-        await comm.save(output_path)
-        return output_path
+    async def synthesize_voice(text: str, output_path: str = "interviewer_voice.mp3") -> str:
+        """Attempts edge-tts first; seamlessly falls back to gTTS if cloud IPs are blocked."""
+        try:
+            comm = edge_tts.Communicate(text=text, voice="en-US-GuyNeural")
+            await comm.save(output_path)
+            return output_path
+        except Exception as e:
+            print(f"[WARN] Edge-TTS failed ({e}), falling back to gTTS...")
+            tts = gTTS(text=text, lang="en", tld="com")
+            tts.save(output_path)
+            return output_path
