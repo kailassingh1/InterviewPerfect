@@ -75,7 +75,7 @@ async def telegram_interview_handler(request: Request):
                 first_q = f"Tell me about your background and why you are applying for the {selected_role} position."
 
             if selected_role:
-                # Save session
+                # Save session to Supabase
                 supabase.table("interview_sessions").insert({
                     "platform": "telegram",
                     "platform_user_id": chat_id,
@@ -159,10 +159,10 @@ async def telegram_interview_handler(request: Request):
                 feedback_text += "🎉 Interview Completed! You have finished all 5 questions for this round."
                 supabase.table("interview_sessions").update({"is_completed": True}).eq("id", session_id).execute()
 
-            # Send Feedback Text
+            # 1. Send Feedback Text
             await send_telegram_text(chat_id, feedback_text)
 
-            # Send Voice Note (Feedback + Next Question)
+            # 2. Send Voice Note (Feedback + Next Question)
             try:
                 spoken_text = eval_data.get("spoken_summary", "Good answer.")
                 if not is_final:

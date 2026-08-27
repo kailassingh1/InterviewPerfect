@@ -1,6 +1,5 @@
 import os
 import json
-import re
 from google import genai
 from groq import Groq
 import edge_tts
@@ -78,7 +77,6 @@ class MockInterviewEngine:
             return json.loads(raw_text)
         except Exception as groq_err:
             print(f"[ERROR] Groq LLM fallback error: {groq_err}")
-            # Safe default if all APIs fail
             return {
                 "score": 7,
                 "technical_gaps": "Good explanation, but elaborate further on specific implementations.",
